@@ -1,0 +1,88 @@
+/com,Calculate SRS from a 1/2 sine pulse
+
+/prep7
+n,1,1
+
+/nopr
+pi=acos(-1)
+amplitude=1000   ! Pulse amplitude in G
+width=0.004   ! Pulse width in seconds
+fmin=1
+fmax=10000
+ppd=25
+
+/com,  Pulse information:
+/com,    Amplitude   %amplitude% g
+/com,    Width       %width*1000% m-sec
+/com,
+/com,  SRS information:
+/com,    Frequency range:        %fmin% to %fmax% Hz
+/com,    No. points per decade:  %ppd%
+
+! Create input pulse
+inputsamples=20
+T=width / inputsamples  ! input sample width
+*del,acel,,nopr
+*dim,acel,table,inputsamples+2,1
+*do,i,1,inputsamples+1
+    myT=T*(i-1)
+    acel(i,0)=myT
+    acel(i,1)=amplitude*sin(myT*pi/width)
+*enddo
+acel(inputsamples+2,0)=5*width
+acel(inputsamples+2,1)=0.0
+/axlab,x,TIME
+/axlab,y,ACEL(g)
+/title,Input Shock: %amplitude%g, %width*1000%ms shock load
+*vplot,acel(1,0),acel(1,1)
+
+! number of frequencies to solve for in SRS
+numfreq=nint(ppd*log(fmax/fmin)/log(10.0))+1
+freqstep=(fmax/fmin)**(1/(numfreq-1))
+*del,freqs,,nopr
+*dim,freqs,,numfreq
+*do,i,1,numfreq
+    freqs(i)=fmin*(freqstep**(i-1))
+*enddo
+
+/com,    Total points:           %numfreq%
+
+! Create input for Resp command
+/post26
+! Use parameters for RESP command input to make more readable
+Spec=6             ! variable to contain spectrum output
+Freq=5             ! variable with frequencies to be solved for
+Inp_Acel=2         ! variable with acceleration input
+Out_Type=3         ! create acceleration spectrum
+Damp=0.05          ! damping (ratio to critical) to be used
+Tinc=T             ! integration time step, 20 pts per cycle at 100 hz
+Inp_Type=1         ! 1=acceleration input, new at 14.0
+
+store,alloc,numfreq
+vput,acel(1,0),1,0              ! variable 1 is time values
+vput,acel(1,1),Inp_Acel,0       ! variable 2 is acceleration values
+vput,freqs(1),Freq,0         ! variable 5 is the frequency list
+resp,Spec,Freq,Inp_Acel,Out_Type,Damp,Tinc,,,Inp_Type   
+
+/title,Response Spectrum: %amplitude%g, %width*1000%ms shock load (%Damp*100%% Damping)
+/axlab,x,Frequency (Hz)
+/axlab,y,Peak Acceleration (g)
+xvar,Freq          ! x axis is frequency
+plvar,Spec         ! plot acceleration spectrum
+
+! retrieve the spectrum values into an array named SRS
+*del,SRS,,nopr
+*dim,SRS,,numfreq
+vget,SRS,Spec         ! retrieve variable 6 (Spec) into array parameter SRS
+*stat,SRS(1)
+
+*del,myout,,nopr
+*dim,myout,,numfreq,2
+*do,i,1,numfreq
+    myout(i,1)=freqs(i)
+    myout(i,2)=srs(i)
+*enddo
+/com,
+/com,  Writing response spectrum to file: srs.csv
+*mwrite,myout,srs,csv,,jik
+ (1(e11.5',')e11.5) 
